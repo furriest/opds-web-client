@@ -44,15 +44,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     showSetup(false)
     return
   }
-  const params = new URLSearchParams(location.search)
-  const feedUrl = params.get('url') || cfg.url
+  const feedUrl = browserPathToOpdsUrl() || cfg.url
   await loadFeed(feedUrl, false)
 })
 
 window.addEventListener('popstate', e => {
-  if (e.state?.url) {
-    loadFeed(e.state.url, false)
-  }
+  const url = e.state?.url || browserPathToOpdsUrl()
+  if (url) loadFeed(url, false)
 })
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -98,7 +96,7 @@ async function loadFeed(url, push = true) {
 
     // Update nav stack
     if (push) {
-      history.pushState({ url }, data.title || url, `?url=${encodeURIComponent(url)}`)
+      history.pushState({ url }, data.title || url, opdsUrlToBrowserPath(url))
       const prev = navStack[navStack.length - 1]
       if (!prev || prev.url !== url) {
         navStack.push({ title: data.title || url, url })
@@ -185,10 +183,7 @@ function mkBookCard(entry) {
   const card = document.createElement('div')
   card.className = 'book-card'
 
-  const color = hslFromStr(entry.title)
-  const initial = (entry.title || '?')[0].toUpperCase()
   const authors = (entry.authors || []).join(', ')
-
   const coverSrc = entry.thumbUrl || entry.coverUrl
 
   const formats = (entry.files || []).map(f => {
@@ -197,28 +192,22 @@ function mkBookCard(entry) {
   }).join('')
 
   card.innerHTML = `
-    <div class="cover-wrap" style="--card-color:${color}">
-      <div class="cover-placeholder">${esc(initial)}</div>
-      ${coverSrc ? `<img alt="" loading="lazy">` : ''}
-    </div>
+    ${coverSrc ? `<div class="cover-wrap"></div>` : ''}
     <div class="book-info">
       <div class="book-title" title="${esc(entry.title)}">${esc(entry.title)}</div>
       ${authors ? `<div class="book-authors" title="${esc(authors)}">${esc(authors)}</div>` : ''}
       ${formats ? `<div class="book-formats">${formats}</div>` : ''}
     </div>`
 
-  // Lazy-load cover with success/fail handling
   if (coverSrc) {
-    const img = card.querySelector('img')
     const wrap = card.querySelector('.cover-wrap')
-    img.classList.add('loading')
-    img.onload = () => {
-      img.classList.remove('loading')
-      img.classList.add('loaded')
-      wrap.classList.add('img-ok')
-    }
-    img.onerror = () => img.remove()
+    const img = document.createElement('img')
+    img.alt = ''
+    img.loading = 'lazy'
+    img.onload = () => img.classList.add('loaded')
+    img.onerror = () => wrap.remove()
     img.src = `/api/proxy?url=${encodeURIComponent(coverSrc)}`
+    wrap.appendChild(img)
   }
 
   return card
@@ -455,6 +444,52 @@ function sanitizeFilename(title) {
     .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
     .replace(/\s+/g, '_')
     .slice(0, 80)
+}
+
+// ── URL scheme: /browse/<path> ────────────────────────────────────────────────
+
+// Convert a full OPDS URL to a clean browser path like /browse/authors/123
+function opdsUrlToBrowserPath(opdsUrl) {
+  if (!cfg?.url) return '/'
+  try {
+    const base   = new URL(cfg.url)
+    const target = new URL(opdsUrl)
+    if (target.host !== base.host) {
+      // Different host (rare): fall back to ?url= query param
+      return '/?url=' + encodeURIComponent(opdsUrl)
+    }
+    const basePath = base.pathname.replace(/\/$/, '')
+    let rel = target.pathname
+    if (basePath && rel.startsWith(basePath)) {
+      rel = rel.slice(basePath.length)
+    }
+    if (!rel || rel === '/') return '/browse' + target.search
+    return '/browse' + rel + target.search
+  } catch {
+    return '/?url=' + encodeURIComponent(opdsUrl)
+  }
+}
+
+// Reconstruct a full OPDS URL from the current browser location
+function browserPathToOpdsUrl() {
+  const path   = location.pathname
+  const search = location.search
+  if (!cfg?.url) return null
+
+  if (path.startsWith('/browse')) {
+    try {
+      const base     = new URL(cfg.url)
+      const basePath = base.pathname.replace(/\/$/, '')
+      const rel      = path.slice('/browse'.length) || '/'
+      return base.origin + basePath + (rel.startsWith('/') ? rel : '/' + rel) + search
+    } catch {
+      return cfg.url
+    }
+  }
+
+  // Legacy ?url= support (bookmarks made before the change)
+  const params = new URLSearchParams(search)
+  return params.get('url') || cfg.url
 }
 
 // Generate a stable hsl color from a string
