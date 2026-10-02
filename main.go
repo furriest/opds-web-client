@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"encoding/base64"
 	"encoding/json"
@@ -9,10 +10,13 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	utls "github.com/refraction-networking/utls"
 )
 
 //go:embed static
@@ -116,20 +120,73 @@ type OpenSearchURL struct {
 
 // ── HTTP client ───────────────────────────────────────────────────────────────
 
-var httpClient = &http.Client{
-	Timeout: 30 * time.Second,
-	CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 10 {
-			return fmt.Errorf("too many redirects")
-		}
-		// Preserve Authorization header on redirects to same host
-		if len(via) > 0 && req.URL.Host == via[0].URL.Host {
-			if auth := via[0].Header.Get("Authorization"); auth != "" {
-				req.Header.Set("Authorization", auth)
+var httpClient = newHTTPClient()
+
+func newHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			DialTLSContext:        dialTLSBrowser,
+			Proxy:                 http.ProxyFromEnvironment,
+			MaxIdleConns:          100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   20 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("too many redirects")
+			}
+			if len(via) > 0 && req.URL.Host == via[0].URL.Host {
+				if auth := via[0].Header.Get("Authorization"); auth != "" {
+					req.Header.Set("Authorization", auth)
+				}
+			}
+			return nil
+		},
+	}
+}
+
+// dialTLSBrowser creates a TLS connection with a Chrome-like fingerprint.
+// Go's http.Transport with DialTLSContext doesn't auto-negotiate HTTP/2, so
+// we strip h2 from ALPN to avoid a protocol mismatch when the server
+// would otherwise accept h2 but we'd send HTTP/1.1 frames.
+func dialTLSBrowser(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+	tcp, err := (&net.Dialer{}).DialContext(ctx, network, addr)
+	if err != nil {
+		return nil, err
+	}
+	cfg := &utls.Config{ServerName: host}
+
+	// Use Chrome fingerprint with http/1.1-only ALPN.
+	if spec, specErr := utls.UTLSIdToSpec(utls.HelloChrome_Auto); specErr == nil {
+		for i := range spec.Extensions {
+			if alpn, ok := spec.Extensions[i].(*utls.ALPNExtension); ok {
+				alpn.AlpnProtocols = []string{"http/1.1"}
+				break
 			}
 		}
-		return nil
-	},
+		conn := utls.UClient(tcp, cfg, utls.HelloCustom)
+		if applyErr := conn.ApplyPreset(&spec); applyErr == nil {
+			if hsErr := conn.HandshakeContext(ctx); hsErr != nil {
+				tcp.Close()
+				return nil, hsErr
+			}
+			return conn, nil
+		}
+	}
+
+	// Fallback: use Chrome_Auto without ALPN override.
+	conn := utls.UClient(tcp, cfg, utls.HelloChrome_Auto)
+	if err := conn.HandshakeContext(ctx); err != nil {
+		tcp.Close()
+		return nil, err
+	}
+	return conn, nil
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────

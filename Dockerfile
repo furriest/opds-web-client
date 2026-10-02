@@ -2,11 +2,17 @@
 FROM golang:1.22-alpine AS builder
 
 WORKDIR /app
+
+# git is required by go mod download; ca-certificates for HTTPS fetches
+RUN apk add --no-cache git ca-certificates
+
 COPY go.mod ./
 RUN go mod download
 
 COPY . .
+# -mod=mod allows go to create/update go.sum during build if needed
 RUN CGO_ENABLED=0 GOOS=linux go build \
+    -mod=mod \
     -ldflags="-s -w" \
     -trimpath \
     -o opds-server .
