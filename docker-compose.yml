@@ -1,0 +1,15 @@
+services:
+  opds-web-client:
+    build: .
+    container_name: opds-web-client
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    environment:
+      - TZ=UTC
+    # Minimal resource limits — adjust to taste
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+          cpus: "0.25"

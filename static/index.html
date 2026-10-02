@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPDS Reader</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='20' font-size='20'>📚</text></svg>">
+</head>
+<body>
+
+<!-- Top bar -->
+<header id="topbar">
+  <div class="topbar-left">
+    <button id="btn-home" class="icon-btn" title="Home" aria-label="Home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/>
+        <path d="M9 21V12h6v9"/>
+      </svg>
+    </button>
+    <nav id="breadcrumb" aria-label="Breadcrumb"></nav>
+  </div>
+  <div class="topbar-right">
+    <div id="search-wrap" class="search-wrap hidden">
+      <input id="search-input" type="search" placeholder="Search…" autocomplete="off">
+      <button id="btn-search" class="icon-btn" title="Search" aria-label="Search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+      </button>
+    </div>
+    <button id="btn-theme" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">
+      <svg id="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="4"/>
+        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+      </svg>
+      <svg id="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>
+    </button>
+    <button id="btn-settings" class="icon-btn" title="Server settings" aria-label="Server settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<!-- Main content -->
+<main id="main">
+  <div id="loading" class="loader hidden" aria-live="polite">
+    <div class="spinner"></div>
+  </div>
+  <div id="error-bar" class="error-bar hidden" role="alert"></div>
+  <div id="content"></div>
+  <div id="pagination" class="pagination"></div>
+</main>
+
+<!-- Setup modal -->
+<div id="modal-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-title">Connect to OPDS server</h2>
+    </div>
+    <form id="setup-form" autocomplete="on" novalidate>
+      <label class="field-label" for="field-url">Server URL</label>
+      <input id="field-url" type="url" placeholder="https://example.com/opds" autocomplete="url" spellcheck="false" required>
+
+      <label class="field-label" for="field-username">Username <span class="optional">(optional)</span></label>
+      <input id="field-username" type="text" placeholder="username" autocomplete="username">
+
+      <label class="field-label" for="field-password">Password <span class="optional">(optional)</span></label>
+      <div class="password-wrap">
+        <input id="field-password" type="password" placeholder="leave blank to keep current" autocomplete="current-password">
+        <button type="button" id="btn-toggle-pw" class="icon-btn" title="Show/hide password" tabindex="-1">
+          <svg id="pw-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+      </div>
+
+      <div id="modal-error" class="modal-error hidden"></div>
+
+      <div class="modal-actions">
+        <button type="button" id="btn-cancel-setup" class="btn-ghost hidden">Cancel</button>
+        <button type="submit" id="btn-connect" class="btn-primary">
+          <span id="btn-connect-label">Connect</span>
+          <span id="btn-connect-spinner" class="btn-spinner hidden"></span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
