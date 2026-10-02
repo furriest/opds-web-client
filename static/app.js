@@ -450,23 +450,17 @@ function sanitizeFilename(title) {
 
 // Convert a full OPDS URL to a clean browser path like /browse/authors/123
 function opdsUrlToBrowserPath(opdsUrl) {
-  if (!cfg?.url) return '/'
   try {
-    const base   = new URL(cfg.url)
-    const target = new URL(opdsUrl)
-    if (target.host !== base.host) {
-      // Different host (rare): fall back to ?url= query param
-      return '/?url=' + encodeURIComponent(opdsUrl)
-    }
+    const base     = new URL(cfg?.url || '')
+    const target   = new URL(opdsUrl)
     const basePath = base.pathname.replace(/\/$/, '')
     let rel = target.pathname
     if (basePath && rel.startsWith(basePath)) {
       rel = rel.slice(basePath.length)
     }
-    if (!rel || rel === '/') return '/browse' + target.search
-    return '/browse' + rel + target.search
+    return '/browse' + (rel || '') + target.search
   } catch {
-    return '/?url=' + encodeURIComponent(opdsUrl)
+    return '/browse'
   }
 }
 
