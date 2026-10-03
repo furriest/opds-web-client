@@ -59,6 +59,7 @@ type Entry struct {
 
 type Author struct {
 	Name string `xml:"name"`
+	URI  string `xml:"uri"`
 }
 
 type Content struct {
@@ -83,14 +84,19 @@ type FeedResponse struct {
 }
 
 type AnyEntry struct {
-	Kind     string     `json:"kind"` // "book" | "nav"
-	Title    string     `json:"title"`
-	Authors  []string   `json:"authors,omitempty"`
-	Summary  string     `json:"summary,omitempty"`
-	NavURL   string     `json:"navUrl,omitempty"`
-	CoverURL string     `json:"coverUrl,omitempty"`
-	ThumbURL string     `json:"thumbUrl,omitempty"`
-	Files    []FileLink `json:"files,omitempty"`
+	Kind     string       `json:"kind"` // "book" | "nav"
+	Title    string       `json:"title"`
+	Authors  []AuthorLink `json:"authors,omitempty"`
+	Summary  string       `json:"summary,omitempty"`
+	NavURL   string       `json:"navUrl,omitempty"`
+	CoverURL string       `json:"coverUrl,omitempty"`
+	ThumbURL string       `json:"thumbUrl,omitempty"`
+	Files    []FileLink   `json:"files,omitempty"`
+}
+
+type AuthorLink struct {
+	Name string `json:"name"`
+	URL  string `json:"url,omitempty"`
 }
 
 type FileLink struct {
@@ -435,7 +441,11 @@ func buildEntry(e Entry, baseURL string) AnyEntry {
 
 	for _, a := range e.Authors {
 		if a.Name != "" {
-			ae.Authors = append(ae.Authors, a.Name)
+			al := AuthorLink{Name: a.Name}
+			if a.URI != "" {
+				al.URL = resolveURL(baseURL, a.URI)
+			}
+			ae.Authors = append(ae.Authors, al)
 		}
 	}
 

@@ -184,8 +184,15 @@ function mkBookCard(entry) {
   const card = document.createElement('div')
   card.className = 'book-card'
 
-  const authors = (entry.authors || []).join(', ')
   const coverSrc = entry.thumbUrl || entry.coverUrl
+
+  // Render authors: clickable if the server provided an author URI, plain text otherwise
+  const authorsHtml = (entry.authors || []).map((a, i, arr) => {
+    const comma = i < arr.length - 1 ? ', ' : ''
+    const name = esc(a.name || '')
+    if (a.url) return `<span class="author-link" data-url="${esc(a.url)}">${name}</span>${comma}`
+    return name + comma
+  }).join('')
 
   const formats = (entry.files || []).map(f => {
     const dlUrl = opdsUrlToDownloadPath(f.url)
@@ -201,7 +208,7 @@ function mkBookCard(entry) {
     ${coverSrc ? `<div class="cover-wrap"></div>` : ''}
     <div class="book-info">
       <div class="book-title" title="${esc(entry.title)}">${esc(entry.title)}</div>
-      ${authors ? `<div class="book-authors">${esc(authors)}</div>` : ''}
+      ${authorsHtml ? `<div class="book-authors">${authorsHtml}</div>` : ''}
       ${entry.summary ? `<div class="book-desc">${esc(entry.summary)}</div>` : ''}
       ${(formats || readBtn) ? `<div class="book-formats">${formats}${readBtn}</div>` : ''}
     </div>`
@@ -216,6 +223,14 @@ function mkBookCard(entry) {
     img.src = `/api/proxy?url=${encodeURIComponent(coverSrc)}`
     wrap.appendChild(img)
   }
+
+  card.querySelectorAll('.author-link').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const url = el.dataset.url
+      if (url) loadFeed(url)
+    })
+  })
 
   if (entry.summary) {
     const desc = card.querySelector('.book-desc')

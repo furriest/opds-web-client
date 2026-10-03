@@ -326,6 +326,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.author-link { cursor: pointer; }
 
 .book-desc {
   font-size: 12px;
