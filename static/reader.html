@@ -229,7 +229,7 @@
   <span id="overlay-back" onclick="history.back()">← Back to catalog</span>
 </div>
 
-<!-- epub.js is bundled at Docker build time into /static/lib/epub.min.js -->
+<!-- JSZip and epub.js are downloaded at Docker build time into /static/lib/ -->
 <script>
 // Define error UI before loading epub.js so onerror handlers can use it
 function showOverlayError(msg) {
@@ -247,6 +247,8 @@ window.onerror = function(msg, src, line, col, err) {
   return true
 }
 </script>
+<script src="/static/lib/jszip.min.js"
+        onerror="showOverlayError('Failed to load JSZip (/static/lib/jszip.min.js missing — rebuild the Docker image)')"></script>
 <script src="/static/lib/epub.min.js"
         onerror="showOverlayError('Failed to load epub.js (/static/lib/epub.min.js missing — rebuild the Docker image)')"></script>
 <script>
