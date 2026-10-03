@@ -281,41 +281,11 @@ document.getElementById('btn-theme').addEventListener('click', () => {
 })
 
 // ── Load book ─────────────────────────────────────────────────────────────────
+// epub.js needs a full ArrayBuffer, not a URL — when given a URL string it tries
+// to fetch META-INF/container.xml and individual chapter files separately,
+// which our single-file proxy cannot serve.
 const bookRelPath = location.pathname.replace(/^\/read/, '') || '/'
 const bookUrl = '/dl' + bookRelPath + location.search
-
-let book
-try {
-  book = ePub(bookUrl)
-} catch(e) {
-  showOverlayError('ePub() failed: ' + (e?.message || e))
-  throw e
-}
-
-book.ready.then(() => {
-  const meta = book.packaging?.metadata || book.package?.metadata || {}
-  const title = meta.title || 'Book'
-  document.title = title + ' · Reader'
-  document.getElementById('book-title').textContent = title
-}).catch(() => {})
-
-rend = book.renderTo('viewer', {
-  width:  '100%',
-  height: '100%',
-  spread: 'none',
-  flow:   'paginated',
-})
-
-rend.themes.register('light', {
-  body: { 'background': '#f5f0e8 !important', 'color': '#1a1a1a !important', 'line-height': '1.75 !important' },
-  p:    { 'margin-bottom': '0.8em !important' },
-})
-rend.themes.register('dark', {
-  body: { 'background': '#1c1c1e !important', 'color': '#e0e0e0 !important', 'line-height': '1.75 !important' },
-  p:    { 'margin-bottom': '0.8em !important' },
-})
-rend.themes.select(dark ? 'dark' : 'light')
-rend.themes.fontSize(fontSize + '%')
 
 // Progressive loading messages — conversion on some servers takes 1-3 min
 const t1 = setTimeout(() => {
@@ -334,50 +304,92 @@ const t3 = setTimeout(() => {
   showOverlayError('The server did not respond in time. The conversion may have failed.')
 }, 4 * 60 * 1000)
 
-function clearLoadTimers() {
-  clearTimeout(t1); clearTimeout(t2); clearTimeout(t3)
-}
+function clearLoadTimers() { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }
 
-rend.display()
-  .then(() => {
+;(async () => {
+  // 1. Download the full EPUB file
+  let ab
+  try {
+    const resp = await fetch(bookUrl)
+    if (!resp.ok) throw new Error('HTTP ' + resp.status)
+    const msgEl = document.getElementById('overlay-msg')
+    if (msgEl) msgEl.textContent = 'Unpacking…'
+    ab = await resp.arrayBuffer()
+  } catch(e) {
+    clearLoadTimers()
+    showOverlayError('Download failed: ' + (e?.message || e))
+    return
+  }
+
+  // 2. Parse in memory
+  let book
+  try {
+    book = ePub(ab)
+  } catch(e) {
+    clearLoadTimers()
+    showOverlayError('Could not parse EPUB: ' + (e?.message || e))
+    return
+  }
+
+  book.ready.then(() => {
+    const meta = book.packaging?.metadata || book.package?.metadata || {}
+    const title = meta.title || 'Book'
+    document.title = title + ' · Reader'
+    document.getElementById('book-title').textContent = title
+  }).catch(() => {})
+
+  rend = book.renderTo('viewer', {
+    width:  '100%',
+    height: '100%',
+    spread: 'none',
+    flow:   'paginated',
+  })
+
+  rend.themes.register('light', {
+    body: { 'background': '#f5f0e8 !important', 'color': '#1a1a1a !important', 'line-height': '1.75 !important' },
+    p:    { 'margin-bottom': '0.8em !important' },
+  })
+  rend.themes.register('dark', {
+    body: { 'background': '#1c1c1e !important', 'color': '#e0e0e0 !important', 'line-height': '1.75 !important' },
+    p:    { 'margin-bottom': '0.8em !important' },
+  })
+  rend.themes.select(dark ? 'dark' : 'light')
+  rend.themes.fontSize(fontSize + '%')
+
+  rend.on('relocated', loc => {
+    if (!loc?.start) return
+    const pct = Math.round((loc.start.percentage || 0) * 100)
+    document.getElementById('prog-fill').style.width = pct + '%'
+    document.getElementById('prog-text').textContent = pct + '%'
+  })
+
+  rend.on('rendered', (_, view) => {
+    try {
+      const doc = view.window?.document
+      if (!doc) return
+      let tx = 0
+      doc.addEventListener('touchstart', e => { tx = e.touches[0].clientX }, { passive: true })
+      doc.addEventListener('touchend', e => {
+        const dx = e.changedTouches[0].clientX - tx
+        if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1)
+      }, { passive: true })
+      doc.addEventListener('click', e => {
+        const w = doc.documentElement.clientWidth
+        if (e.clientX < w * 0.25)      go(-1)
+        else if (e.clientX > w * 0.75) go(1)
+      })
+    } catch {}
+  })
+
+  try {
+    await rend.display()
     clearLoadTimers()
     document.getElementById('overlay').classList.add('hidden')
-  })
-  .catch(err => {
+  } catch(e) {
     clearLoadTimers()
-    showOverlayError('Could not load book. ' + (err?.message || String(err)))
-  })
-
-book.ready.catch(err => {
-  clearLoadTimers()
-  showOverlayError('Failed to open book. ' + (err?.message || String(err)))
-})
-
-rend.on('relocated', loc => {
-  if (!loc?.start) return
-  const pct = Math.round((loc.start.percentage || 0) * 100)
-  document.getElementById('prog-fill').style.width = pct + '%'
-  document.getElementById('prog-text').textContent = pct + '%'
-})
-
-// Forward clicks inside epub iframe
-rend.on('rendered', (_, view) => {
-  try {
-    const doc = view.window?.document
-    if (!doc) return
-    let tx = 0
-    doc.addEventListener('touchstart', e => { tx = e.touches[0].clientX }, { passive: true })
-    doc.addEventListener('touchend', e => {
-      const dx = e.changedTouches[0].clientX - tx
-      if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1)
-    }, { passive: true })
-    doc.addEventListener('click', e => {
-      const w = doc.documentElement.clientWidth
-      if (e.clientX < w * 0.25)      go(-1)
-      else if (e.clientX > w * 0.75) go(1)
-    })
-  } catch {}
-})
+    showOverlayError('Could not render book: ' + (e?.message || String(e)))
+  }
+})()
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 function go(dir) {
