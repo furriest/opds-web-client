@@ -33,6 +33,7 @@ const dom = {
   btnConnSpinner:$('btn-connect-spinner'),
   btnTogglePw:   $('btn-toggle-pw'),
   modalError:    $('modal-error'),
+  tooltip:       $('tooltip'),
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -187,15 +188,17 @@ function mkBookCard(entry) {
   const coverSrc = entry.thumbUrl || entry.coverUrl
 
   const formats = (entry.files || []).map(f => {
+    const dlUrl = opdsUrlToDownloadPath(f.url)
     const filename = sanitizeFilename(entry.title) + '.' + f.format.toLowerCase()
-    return `<a class="fmt-btn" href="/api/proxy?url=${encodeURIComponent(f.url)}" download="${esc(filename)}" title="Download ${f.format}">${f.format}</a>`
+    return `<a class="fmt-btn" href="${esc(dlUrl)}" download="${esc(filename)}" title="Download ${f.format}">${f.format}</a>`
   }).join('')
 
   card.innerHTML = `
     ${coverSrc ? `<div class="cover-wrap"></div>` : ''}
     <div class="book-info">
       <div class="book-title" title="${esc(entry.title)}">${esc(entry.title)}</div>
-      ${authors ? `<div class="book-authors" title="${esc(authors)}">${esc(authors)}</div>` : ''}
+      ${authors ? `<div class="book-authors">${esc(authors)}</div>` : ''}
+      ${entry.summary ? `<div class="book-desc">${esc(entry.summary)}</div>` : ''}
       ${formats ? `<div class="book-formats">${formats}</div>` : ''}
     </div>`
 
@@ -208,6 +211,14 @@ function mkBookCard(entry) {
     img.onerror = () => wrap.remove()
     img.src = `/api/proxy?url=${encodeURIComponent(coverSrc)}`
     wrap.appendChild(img)
+  }
+
+  if (entry.summary) {
+    const desc = card.querySelector('.book-desc')
+    if (desc) {
+      desc.addEventListener('mouseenter', () => showTooltip(entry.summary))
+      desc.addEventListener('mouseleave', hideTooltip)
+    }
   }
 
   return card
@@ -368,6 +379,27 @@ function bindEvents() {
   // Search
   dom.btnSearch.addEventListener('click', doSearch)
   dom.searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch() })
+
+  // Tooltip positioning
+  document.addEventListener('mousemove', e => {
+    if (dom.tooltip.classList.contains('hidden')) return
+    let x = e.clientX + 16
+    let y = e.clientY + 10
+    if (x + 340 > window.innerWidth) x = e.clientX - 340
+    if (x < 8) x = 8
+    dom.tooltip.style.left = x + 'px'
+    dom.tooltip.style.top  = y + 'px'
+  })
+}
+
+function showTooltip(text) {
+  if (!text) return
+  dom.tooltip.textContent = text
+  dom.tooltip.classList.remove('hidden')
+}
+
+function hideTooltip() {
+  dom.tooltip.classList.add('hidden')
 }
 
 function setConnecting(on) {
@@ -461,6 +493,22 @@ function opdsUrlToBrowserPath(opdsUrl) {
     return '/browse' + (rel || '') + target.search
   } catch {
     return '/browse'
+  }
+}
+
+// Convert a full OPDS URL to a clean /dl/<path> download URL
+function opdsUrlToDownloadPath(opdsUrl) {
+  try {
+    const base     = new URL(cfg?.url || '')
+    const target   = new URL(opdsUrl)
+    const basePath = base.pathname.replace(/\/$/, '')
+    let rel = target.pathname
+    if (basePath && rel.startsWith(basePath)) {
+      rel = rel.slice(basePath.length)
+    }
+    return '/dl' + (rel || '') + target.search
+  } catch {
+    return '/api/proxy?url=' + encodeURIComponent(opdsUrl)
   }
 }
 

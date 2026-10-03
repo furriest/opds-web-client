@@ -327,12 +327,23 @@ body {
   text-overflow: ellipsis;
 }
 
+.book-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: default;
+}
+
 .book-formats {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin-top: auto;
-  padding-top: 8px;
+  padding-top: 6px;
 }
 
 .fmt-btn {
@@ -520,6 +531,24 @@ body {
   border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
+}
+
+/* ── Tooltip ──────────────────────────────────────────────────────────────── */
+.tooltip {
+  position: fixed;
+  z-index: 999;
+  max-width: 320px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.55;
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* ── Utility ──────────────────────────────────────────────────────────────── */

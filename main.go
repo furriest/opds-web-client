@@ -202,7 +202,8 @@ func main() {
 
 	mux.HandleFunc("/api/config", handleConfig)
 	mux.HandleFunc("/api/feed", handleFeed)
-	mux.HandleFunc("/api/proxy", handleProxy)
+	mux.HandleFunc("/api/proxy", handleProxy) // cover images (keeps ?url= form)
+	mux.HandleFunc("/dl/", handleDownload)    // file downloads (clean path)
 	mux.HandleFunc("/", serveIndex(sub))
 
 	log.Println("Listening on :80")
@@ -498,27 +499,54 @@ func resolveOpenSearch(cfg *Config, descURL, baseURL string) string {
 	return ""
 }
 
-// ── Proxy handler ─────────────────────────────────────────────────────────────
+// ── Proxy handlers ────────────────────────────────────────────────────────────
 
+// handleProxy proxies cover images via ?url=<full-url> (kept for covers).
 func handleProxy(w http.ResponseWriter, r *http.Request) {
 	cfg := getConfig(r)
 	if cfg == nil {
 		http.Error(w, "not configured", http.StatusUnauthorized)
 		return
 	}
-
 	targetURL := r.URL.Query().Get("url")
 	if targetURL == "" {
 		http.Error(w, "url required", http.StatusBadRequest)
 		return
 	}
-
 	u, err := url.Parse(targetURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 		http.Error(w, "invalid url", http.StatusBadRequest)
 		return
 	}
+	doProxy(cfg, targetURL, w, r)
+}
 
+// handleDownload proxies file downloads via a clean /dl/<path> URL.
+// The path is relative to the OPDS root (base path stripped by the client).
+func handleDownload(w http.ResponseWriter, r *http.Request) {
+	cfg := getConfig(r)
+	if cfg == nil {
+		http.Error(w, "not configured", http.StatusUnauthorized)
+		return
+	}
+	base, err := url.Parse(cfg.URL)
+	if err != nil {
+		http.Error(w, "invalid config", http.StatusInternalServerError)
+		return
+	}
+	basePath := strings.TrimRight(base.Path, "/")
+	relPath := r.URL.EscapedPath()[len("/dl"):]
+	if relPath == "" {
+		relPath = "/"
+	}
+	targetURL := base.Scheme + "://" + base.Host + basePath + relPath
+	if r.URL.RawQuery != "" {
+		targetURL += "?" + r.URL.RawQuery
+	}
+	doProxy(cfg, targetURL, w, r)
+}
+
+func doProxy(cfg *Config, targetURL string, w http.ResponseWriter, r *http.Request) {
 	req, err := http.NewRequest("GET", targetURL, nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -528,7 +556,6 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 	if cfg.Username != "" {
 		req.SetBasicAuth(cfg.Username, cfg.Password)
 	}
-	// Pass Range header for resume support
 	if rng := r.Header.Get("Range"); rng != "" {
 		req.Header.Set("Range", rng)
 	}
@@ -540,7 +567,6 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	// Forward relevant headers
 	for _, h := range []string{
 		"Content-Type", "Content-Length", "Content-Disposition",
 		"Content-Range", "Accept-Ranges", "Last-Modified", "ETag",
@@ -549,11 +575,9 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set(h, v)
 		}
 	}
-	// Ensure images are cached by browser
 	if ct := resp.Header.Get("Content-Type"); strings.HasPrefix(ct, "image/") {
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 	}
-
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
 }
