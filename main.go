@@ -122,6 +122,14 @@ type OpenSearchURL struct {
 
 var httpClient = newHTTPClient()
 
+// downloadClient has a much longer timeout to handle on-the-fly EPUB conversion
+// on servers like flibusta.is which may take 1–3 minutes to produce a file.
+var downloadClient = newHTTPClient()
+
+func init() {
+	downloadClient.Timeout = 10 * time.Minute
+}
+
 func newHTTPClient() *http.Client {
 	return &http.Client{
 		Timeout: 30 * time.Second,
@@ -548,10 +556,15 @@ func handleDownload(w http.ResponseWriter, r *http.Request) {
 	if r.URL.RawQuery != "" {
 		targetURL += "?" + r.URL.RawQuery
 	}
-	doProxy(cfg, targetURL, w, r)
+	// Use downloadClient: longer timeout to handle on-the-fly EPUB/FB2 conversion.
+	doProxyWith(downloadClient, cfg, targetURL, w, r)
 }
 
 func doProxy(cfg *Config, targetURL string, w http.ResponseWriter, r *http.Request) {
+	doProxyWith(httpClient, cfg, targetURL, w, r)
+}
+
+func doProxyWith(client *http.Client, cfg *Config, targetURL string, w http.ResponseWriter, r *http.Request) {
 	req, err := http.NewRequest("GET", targetURL, nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -565,7 +578,7 @@ func doProxy(cfg *Config, targetURL string, w http.ResponseWriter, r *http.Reque
 		req.Header.Set("Range", rng)
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return

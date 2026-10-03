@@ -142,12 +142,27 @@
       position: fixed; inset: 0;
       background: var(--bg);
       display: flex; align-items: center; justify-content: center;
+      flex-direction: column;
       gap: 12px;
       z-index: 200;
       font-size: 14px; color: var(--muted);
       transition: opacity .3s;
+      padding: 24px;
+      text-align: center;
     }
     #overlay.hidden { opacity: 0; pointer-events: none; }
+
+    #overlay-row { display: flex; align-items: center; gap: 10px; }
+    #overlay-sub { font-size: 12px; color: var(--muted); max-width: 300px; line-height: 1.5; }
+    #overlay-retry {
+      display: none;
+      margin-top: 4px;
+      padding: 8px 20px;
+      border-radius: 8px; border: none;
+      background: var(--accent); color: #fff;
+      font-size: 13px; cursor: pointer;
+    }
+    #overlay-back { font-size: 12px; color: var(--muted); cursor: pointer; text-decoration: underline; margin-top: 2px; }
 
     .spinner {
       width: 28px; height: 28px;
@@ -204,7 +219,15 @@
   <span id="prog-text">–</span>
 </footer>
 
-<div id="overlay"><div class="spinner"></div> Loading book…</div>
+<div id="overlay">
+  <div id="overlay-row">
+    <div class="spinner" id="overlay-spinner"></div>
+    <span id="overlay-msg">Loading book…</span>
+  </div>
+  <div id="overlay-sub"></div>
+  <button id="overlay-retry" onclick="location.reload()">Try again</button>
+  <span id="overlay-back" onclick="history.back()">← Back to catalog</span>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"></script>
 <script>
@@ -263,13 +286,47 @@ rend.themes.register('dark', {
 rend.themes.select(dark ? 'dark' : 'light')
 rend.themes.fontSize(fontSize + '%')
 
+// Progressive loading messages — conversion on some servers takes 1-3 min
+const t1 = setTimeout(() => {
+  document.getElementById('overlay-sub').textContent =
+    'The server is preparing the file. This may take a minute…'
+}, 15000)
+
+const t2 = setTimeout(() => {
+  document.getElementById('overlay-msg').textContent = 'Still waiting…'
+  document.getElementById('overlay-sub').textContent =
+    'Conversion is taking longer than usual. Please hold on.'
+}, 60000)
+
+const t3 = setTimeout(() => {
+  showOverlayError('The server did not respond in time. The conversion may have failed.')
+}, 4 * 60 * 1000)
+
+function clearLoadTimers() {
+  clearTimeout(t1); clearTimeout(t2); clearTimeout(t3)
+}
+
+function showOverlayError(msg) {
+  clearLoadTimers()
+  document.getElementById('overlay-spinner').style.display = 'none'
+  document.getElementById('overlay-msg').textContent = msg
+  document.getElementById('overlay-sub').textContent = ''
+  document.getElementById('overlay-retry').style.display = 'inline-block'
+  document.getElementById('overlay-back').style.display = 'block'
+}
+
 rend.display()
-  .then(() => { document.getElementById('overlay').classList.add('hidden') })
-  .catch(err => {
-    const ov = document.getElementById('overlay')
-    ov.querySelector('.spinner').style.display = 'none'
-    ov.textContent = 'Could not load book. ' + (err?.message || err)
+  .then(() => {
+    clearLoadTimers()
+    document.getElementById('overlay').classList.add('hidden')
   })
+  .catch(err => {
+    showOverlayError('Could not load book. ' + (err?.message || String(err)))
+  })
+
+book.ready.catch(err => {
+  showOverlayError('Failed to open book. ' + (err?.message || String(err)))
+})
 
 rend.on('relocated', loc => {
   if (!loc?.start) return
