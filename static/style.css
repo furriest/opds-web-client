@@ -362,6 +362,11 @@ body {
 }
 .fmt-btn:hover { background: var(--accent-hover); }
 
+.fmt-read {
+  background: #0d9488;
+}
+.fmt-read:hover { background: #0f766e; }
+
 /* ── Pagination ───────────────────────────────────────────────────────────── */
 .pagination {
   display: flex;

@@ -193,13 +193,17 @@ function mkBookCard(entry) {
     return `<a class="fmt-btn" href="${esc(dlUrl)}" download="${esc(filename)}" title="Download ${f.format}">${f.format}</a>`
   }).join('')
 
+  const epubFile = (entry.files || []).find(f => f.format === 'EPUB')
+  const readLink = epubFile ? opdsUrlToReadPath(epubFile.url) : null
+  const readBtn  = readLink ? `<a class="fmt-btn fmt-read" href="${esc(readLink)}" title="Read online">online</a>` : ''
+
   card.innerHTML = `
     ${coverSrc ? `<div class="cover-wrap"></div>` : ''}
     <div class="book-info">
       <div class="book-title" title="${esc(entry.title)}">${esc(entry.title)}</div>
       ${authors ? `<div class="book-authors">${esc(authors)}</div>` : ''}
       ${entry.summary ? `<div class="book-desc">${esc(entry.summary)}</div>` : ''}
-      ${formats ? `<div class="book-formats">${formats}</div>` : ''}
+      ${(formats || readBtn) ? `<div class="book-formats">${formats}${readBtn}</div>` : ''}
     </div>`
 
   if (coverSrc) {
@@ -478,38 +482,31 @@ function sanitizeFilename(title) {
     .slice(0, 80)
 }
 
-// ── URL scheme: /browse/<path> ────────────────────────────────────────────────
+// ── URL scheme: /browse/<path>, /dl/<path>, /read/<path> ─────────────────────
 
-// Convert a full OPDS URL to a clean browser path like /browse/authors/123
-function opdsUrlToBrowserPath(opdsUrl) {
+function opdsUrlToLocalPath(prefix, opdsUrl) {
   try {
     const base     = new URL(cfg?.url || '')
     const target   = new URL(opdsUrl)
     const basePath = base.pathname.replace(/\/$/, '')
     let rel = target.pathname
-    if (basePath && rel.startsWith(basePath)) {
-      rel = rel.slice(basePath.length)
-    }
-    return '/browse' + (rel || '') + target.search
+    if (basePath && rel.startsWith(basePath)) rel = rel.slice(basePath.length)
+    return prefix + (rel || '') + target.search
   } catch {
-    return '/browse'
+    return null
   }
 }
 
-// Convert a full OPDS URL to a clean /dl/<path> download URL
+function opdsUrlToBrowserPath(opdsUrl) {
+  return opdsUrlToLocalPath('/browse', opdsUrl) ?? '/browse'
+}
+
 function opdsUrlToDownloadPath(opdsUrl) {
-  try {
-    const base     = new URL(cfg?.url || '')
-    const target   = new URL(opdsUrl)
-    const basePath = base.pathname.replace(/\/$/, '')
-    let rel = target.pathname
-    if (basePath && rel.startsWith(basePath)) {
-      rel = rel.slice(basePath.length)
-    }
-    return '/dl' + (rel || '') + target.search
-  } catch {
-    return '/api/proxy?url=' + encodeURIComponent(opdsUrl)
-  }
+  return opdsUrlToLocalPath('/dl', opdsUrl) ?? ('/api/proxy?url=' + encodeURIComponent(opdsUrl))
+}
+
+function opdsUrlToReadPath(opdsUrl) {
+  return opdsUrlToLocalPath('/read', opdsUrl)
 }
 
 // Reconstruct a full OPDS URL from the current browser location

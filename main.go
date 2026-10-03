@@ -204,6 +204,7 @@ func main() {
 	mux.HandleFunc("/api/feed", handleFeed)
 	mux.HandleFunc("/api/proxy", handleProxy) // cover images (keeps ?url= form)
 	mux.HandleFunc("/dl/", handleDownload)    // file downloads (clean path)
+	mux.HandleFunc("/read/", servePage(sub, "reader.html"))
 	mux.HandleFunc("/", serveIndex(sub))
 
 	log.Println("Listening on :80")
@@ -213,8 +214,12 @@ func main() {
 }
 
 func serveIndex(sub fs.FS) http.HandlerFunc {
+	return servePage(sub, "index.html")
+}
+
+func servePage(sub fs.FS, name string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		data, err := fs.ReadFile(sub, "index.html")
+		data, err := fs.ReadFile(sub, name)
 		if err != nil {
 			http.NotFound(w, r)
 			return
