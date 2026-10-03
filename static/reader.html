@@ -359,11 +359,18 @@ function clearLoadTimers() { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3
     return
   }
 
-  book.ready.then(() => {
+  book.ready.then(async () => {
     const meta = book.packaging?.metadata || book.package?.metadata || {}
     const title = meta.title || 'Book'
     document.title = title + ' · Reader'
     document.getElementById('book-title').textContent = title
+    // epub.js requires locations to be generated before percentage is non-zero.
+    // Runs in the background after initial render; updates the bar when done.
+    try {
+      await book.locations.generate(1024)
+      const cur = rend?.currentLocation()
+      if (cur?.start) setProgress(cur.start.percentage)
+    } catch {}
   }).catch(() => {})
 
   rend = book.renderTo('viewer', {
@@ -375,11 +382,15 @@ function clearLoadTimers() { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3
 
   rend.themes.fontSize(fontSize + '%')
 
-  rend.on('relocated', loc => {
-    if (!loc?.start) return
-    const pct = Math.round((loc.start.percentage || 0) * 100)
+  function setProgress(pct01) {
+    const pct = Math.round((pct01 || 0) * 100)
     document.getElementById('prog-fill').style.width = pct + '%'
     document.getElementById('prog-text').textContent = pct + '%'
+  }
+
+  rend.on('relocated', loc => {
+    if (!loc?.start) return
+    setProgress(loc.start.percentage)
   })
 
   rend.on('rendered', (_, view) => {
