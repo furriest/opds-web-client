@@ -268,12 +268,38 @@ let dark = localStorage.getItem('theme') === 'dark' ||
     (localStorage.getItem('theme') !== 'light' &&
      window.matchMedia('(prefers-color-scheme: dark)').matches)
 
+// Inject theme CSS directly into an epub iframe document.
+// epub.js's themes.register/select accumulates rules in the same <style> element
+// and !important declarations from prior themes linger, so we own a dedicated
+// <style id="opds-theme"> that we fully replace on every switch.
+function injectThemeCss(doc, d) {
+  if (!doc?.head) return
+  let el = doc.getElementById('opds-theme')
+  if (!el) {
+    el = doc.createElement('style')
+    el.id = 'opds-theme'
+    doc.head.appendChild(el)
+  }
+  el.textContent =
+    'html,body{background:' + (d ? '#1c1c1e' : '#f5f0e8') + '!important;' +
+              'color:'      + (d ? '#e0e0e0' : '#1a1a1a') + '!important;' +
+              'line-height:1.75!important}' +
+    'p{margin-bottom:.8em!important}'
+}
+
+function applyEpubTheme(d) {
+  // Query all rendered iframes directly — reliable regardless of epub.js internals
+  document.querySelectorAll('#viewer iframe').forEach(iframe => {
+    try { injectThemeCss(iframe.contentDocument, d) } catch {}
+  })
+}
+
 function applyTheme(d) {
   dark = d
   document.documentElement.dataset.theme = d ? 'dark' : 'light'
   document.getElementById('ico-sun').style.display  = d ? 'none' : ''
   document.getElementById('ico-moon').style.display = d ? '' : 'none'
-  if (rend) rend.themes.select(d ? 'dark' : 'light')
+  applyEpubTheme(d)
 }
 applyTheme(dark)
 
@@ -347,15 +373,6 @@ function clearLoadTimers() { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3
     flow:   'paginated',
   })
 
-  rend.themes.register('light', {
-    body: { 'background': '#f5f0e8 !important', 'color': '#1a1a1a !important', 'line-height': '1.75 !important' },
-    p:    { 'margin-bottom': '0.8em !important' },
-  })
-  rend.themes.register('dark', {
-    body: { 'background': '#1c1c1e !important', 'color': '#e0e0e0 !important', 'line-height': '1.75 !important' },
-    p:    { 'margin-bottom': '0.8em !important' },
-  })
-  rend.themes.select(dark ? 'dark' : 'light')
   rend.themes.fontSize(fontSize + '%')
 
   rend.on('relocated', loc => {
@@ -369,6 +386,7 @@ function clearLoadTimers() { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3
     try {
       const doc = view.window?.document
       if (!doc) return
+      injectThemeCss(doc, dark)  // apply current theme to every newly rendered view
       let tx = 0
       doc.addEventListener('touchstart', e => { tx = e.touches[0].clientX }, { passive: true })
       doc.addEventListener('touchend', e => {
