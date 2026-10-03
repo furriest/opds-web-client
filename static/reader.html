@@ -229,9 +229,33 @@
   <span id="overlay-back" onclick="history.back()">← Back to catalog</span>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"></script>
+<!-- epub.js is bundled at Docker build time into /static/lib/epub.min.js -->
+<script>
+// Define error UI before loading epub.js so onerror handlers can use it
+function showOverlayError(msg) {
+  const spinner = document.getElementById('overlay-spinner')
+  const msgEl   = document.getElementById('overlay-msg')
+  const sub     = document.getElementById('overlay-sub')
+  const retry   = document.getElementById('overlay-retry')
+  if (spinner) spinner.style.display = 'none'
+  if (msgEl)   msgEl.textContent = msg
+  if (sub)     sub.textContent = ''
+  if (retry)   retry.style.display = 'inline-block'
+}
+window.onerror = function(msg, src, line, col, err) {
+  showOverlayError('JS error: ' + msg + (src ? ' (' + src + ':' + line + ')' : ''))
+  return true
+}
+</script>
+<script src="/static/lib/epub.min.js"
+        onerror="showOverlayError('Failed to load epub.js (/static/lib/epub.min.js missing — rebuild the Docker image)')"></script>
 <script>
 'use strict'
+
+if (typeof ePub === 'undefined') {
+  showOverlayError('epub.js did not load. Rebuild the Docker image to bundle it.')
+  throw new Error('ePub undefined')
+}
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
 let dark = localStorage.getItem('theme') === 'dark' ||
@@ -259,7 +283,13 @@ const bookUrl = '/dl' + bookRelPath + location.search
 let rend = null
 let fontSize = parseInt(localStorage.getItem('r-font') || '100', 10)
 
-const book = ePub(bookUrl)
+let book
+try {
+  book = ePub(bookUrl)
+} catch(e) {
+  showOverlayError('ePub() failed: ' + (e?.message || e))
+  throw e
+}
 
 book.ready.then(() => {
   const meta = book.packaging?.metadata || book.package?.metadata || {}
@@ -288,14 +318,15 @@ rend.themes.fontSize(fontSize + '%')
 
 // Progressive loading messages — conversion on some servers takes 1-3 min
 const t1 = setTimeout(() => {
-  document.getElementById('overlay-sub').textContent =
-    'The server is preparing the file. This may take a minute…'
+  const sub = document.getElementById('overlay-sub')
+  if (sub) sub.textContent = 'The server is preparing the file. This may take a minute…'
 }, 15000)
 
 const t2 = setTimeout(() => {
-  document.getElementById('overlay-msg').textContent = 'Still waiting…'
-  document.getElementById('overlay-sub').textContent =
-    'Conversion is taking longer than usual. Please hold on.'
+  const msgEl = document.getElementById('overlay-msg')
+  const sub   = document.getElementById('overlay-sub')
+  if (msgEl) msgEl.textContent = 'Still waiting…'
+  if (sub)   sub.textContent = 'Conversion is taking longer than usual. Please hold on.'
 }, 60000)
 
 const t3 = setTimeout(() => {
@@ -306,25 +337,18 @@ function clearLoadTimers() {
   clearTimeout(t1); clearTimeout(t2); clearTimeout(t3)
 }
 
-function showOverlayError(msg) {
-  clearLoadTimers()
-  document.getElementById('overlay-spinner').style.display = 'none'
-  document.getElementById('overlay-msg').textContent = msg
-  document.getElementById('overlay-sub').textContent = ''
-  document.getElementById('overlay-retry').style.display = 'inline-block'
-  document.getElementById('overlay-back').style.display = 'block'
-}
-
 rend.display()
   .then(() => {
     clearLoadTimers()
     document.getElementById('overlay').classList.add('hidden')
   })
   .catch(err => {
+    clearLoadTimers()
     showOverlayError('Could not load book. ' + (err?.message || String(err)))
   })
 
 book.ready.catch(err => {
+  clearLoadTimers()
   showOverlayError('Failed to open book. ' + (err?.message || String(err)))
 })
 

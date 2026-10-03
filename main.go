@@ -216,9 +216,27 @@ func main() {
 	mux.HandleFunc("/", serveIndex(sub))
 
 	log.Println("Listening on :80")
-	if err := http.ListenAndServe(":80", mux); err != nil {
+	if err := http.ListenAndServe(":80", logRequests(mux)); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func logRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lw := &statusWriter{ResponseWriter: w, code: 200}
+		next.ServeHTTP(lw, r)
+		log.Printf("%s %s %d", r.Method, r.URL.RequestURI(), lw.code)
+	})
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	code int
+}
+
+func (sw *statusWriter) WriteHeader(code int) {
+	sw.code = code
+	sw.ResponseWriter.WriteHeader(code)
 }
 
 func serveIndex(sub fs.FS) http.HandlerFunc {
