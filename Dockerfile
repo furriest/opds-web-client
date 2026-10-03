@@ -7,6 +7,10 @@ WORKDIR /app
 RUN apk add --no-cache git ca-certificates curl
 
 COPY go.mod ./
+# GOPROXY=direct: load modules from GitHub/etc directly, bypassing proxy.golang.org
+# (storage.googleapis.com used by the default proxy is often blocked by VPNs)
+# GONOSUMDB=*: skip checksum DB verification (still verifies module hashes locally)
+ENV GOPROXY=direct GONOSUMDB=*
 RUN go mod download
 
 COPY . .
