@@ -121,16 +121,19 @@
     }
 
     #prog-track {
-      flex: 1; height: 3px;
+      flex: 1; height: 6px;
       background: var(--border);
-      border-radius: 2px;
+      border-radius: 3px;
       overflow: hidden;
+      cursor: pointer;
     }
+    #prog-track:hover { opacity: .8; }
     #prog-fill {
       height: 100%; width: 0%;
       background: var(--accent);
-      border-radius: 2px;
+      border-radius: 3px;
       transition: width .4s;
+      pointer-events: none;
     }
     #prog-text {
       font-size: 11px; color: var(--muted);
@@ -262,6 +265,7 @@ if (typeof ePub === 'undefined') {
 // ── State (declared before applyTheme to avoid temporal dead zone) ───────────
 let rend = null
 let fontSize = parseInt(localStorage.getItem('r-font') || '100', 10)
+let locationsReady = false
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
 let dark = localStorage.getItem('theme') === 'dark' ||
@@ -314,6 +318,7 @@ document.getElementById('btn-theme').addEventListener('click', () => {
 // which our single-file proxy cannot serve.
 const bookRelPath = location.pathname.replace(/^\/read/, '') || '/'
 const bookUrl = '/dl' + bookRelPath + location.search
+const posKey = 'r-pos:' + bookUrl   // localStorage key for saved reading position
 
 // Progressive loading messages — conversion on some servers takes 1-3 min
 const t1 = setTimeout(() => {
@@ -368,6 +373,7 @@ function clearLoadTimers() { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3
     // Runs in the background after initial render; updates the bar when done.
     try {
       await book.locations.generate(1024)
+      locationsReady = true
       const cur = rend?.currentLocation()
       if (cur?.start) setProgress(cur.start.percentage)
     } catch {}
@@ -391,6 +397,19 @@ function clearLoadTimers() { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3
   rend.on('relocated', loc => {
     if (!loc?.start) return
     setProgress(loc.start.percentage)
+    // Persist reading position so the book reopens at the same place
+    if (loc.start.cfi) {
+      try { localStorage.setItem(posKey, loc.start.cfi) } catch {}
+    }
+  })
+
+  // Click on progress track to seek to that position
+  document.getElementById('prog-track').addEventListener('click', e => {
+    if (!locationsReady) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    const cfi  = book.locations.cfiFromPercentage(pct)
+    if (cfi) rend.display(cfi).catch(() => {})
   })
 
   rend.on('rendered', (_, view) => {
@@ -412,8 +431,12 @@ function clearLoadTimers() { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3
     } catch {}
   })
 
+  // Restore saved position, or start from the beginning
+  let savedCfi = null
+  try { savedCfi = localStorage.getItem(posKey) } catch {}
+
   try {
-    await rend.display()
+    await (savedCfi ? rend.display(savedCfi).catch(() => rend.display()) : rend.display())
     clearLoadTimers()
     document.getElementById('overlay').classList.add('hidden')
   } catch(e) {
