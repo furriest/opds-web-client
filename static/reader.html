@@ -257,6 +257,10 @@ if (typeof ePub === 'undefined') {
   throw new Error('ePub undefined')
 }
 
+// ── State (declared before applyTheme to avoid temporal dead zone) ───────────
+let rend = null
+let fontSize = parseInt(localStorage.getItem('r-font') || '100', 10)
+
 // ── Theme ─────────────────────────────────────────────────────────────────────
 let dark = localStorage.getItem('theme') === 'dark' ||
     (localStorage.getItem('theme') !== 'light' &&
@@ -279,9 +283,6 @@ document.getElementById('btn-theme').addEventListener('click', () => {
 // ── Load book ─────────────────────────────────────────────────────────────────
 const bookRelPath = location.pathname.replace(/^\/read/, '') || '/'
 const bookUrl = '/dl' + bookRelPath + location.search
-
-let rend = null
-let fontSize = parseInt(localStorage.getItem('r-font') || '100', 10)
 
 let book
 try {
