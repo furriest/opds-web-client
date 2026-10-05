@@ -4,6 +4,8 @@
 let cfg = null          // {url, username, hasPassword}
 let navStack = []       // [{title, url}]
 let searchUrl = null    // OpenSearch URL template with {searchTerms}
+let lastFeedData = null // last loaded feed, kept so the language filter can re-render without a refetch
+let langFilter = localStorage.getItem('langFilter') || 'ru'
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id)
@@ -22,6 +24,7 @@ const dom = {
   searchWrap:    $('search-wrap'),
   searchInput:   $('search-input'),
   btnSearch:     $('btn-search'),
+  langFilter:    $('lang-filter'),
   overlay:       $('modal-overlay'),
   setupForm:     $('setup-form'),
   fieldUrl:      $('field-url'),
@@ -39,6 +42,7 @@ const dom = {
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   loadTheme()
+  dom.langFilter.value = langFilter
   bindEvents()
   await loadConfig()
   if (!cfg) {
@@ -94,6 +98,7 @@ async function loadFeed(url, push = true) {
 
     const data = await r.json()
     searchUrl = data.searchUrl || null
+    lastFeedData = data
 
     // Update nav stack
     if (push) {
@@ -134,8 +139,9 @@ function renderFeed(data) {
     return
   }
 
-  const navEntries  = entries.filter(e => e.kind === 'nav')
-  const bookEntries = entries.filter(e => e.kind === 'book')
+  const navEntries     = entries.filter(e => e.kind === 'nav')
+  const allBookEntries = entries.filter(e => e.kind === 'book')
+  const bookEntries    = allBookEntries.filter(matchesLangFilter)
 
   if (navEntries.length) {
     const list = document.createElement('div')
@@ -149,6 +155,11 @@ function renderFeed(data) {
     grid.className = 'book-grid'
     bookEntries.forEach(e => grid.appendChild(mkBookCard(e)))
     dom.content.appendChild(grid)
+  } else if (allBookEntries.length) {
+    const note = document.createElement('p')
+    note.className = 'empty'
+    note.textContent = 'На этой странице нет книг для выбранного языка. Попробуйте «Все языки».'
+    dom.content.appendChild(note)
   }
 
   renderPagination(data.links || {})
@@ -204,11 +215,23 @@ function mkBookCard(entry) {
   const readLink = epubFile ? opdsUrlToReadPath(epubFile.url) : null
   const readBtn  = readLink ? `<a class="fmt-btn fmt-read" href="${esc(readLink)}" title="Read online">online</a>` : ''
 
+  const langBadge = entry.language ? `<div class="lang-badge">${esc(entry.language.toUpperCase())}</div>` : ''
+
+  // Series: clickable link to the series listing when the server gave us one, plain text otherwise
+  const seriesLabel = entry.series ? entry.series + (entry.seriesIndex ? ` #${entry.seriesIndex}` : '') : ''
+  const seriesHtml = seriesLabel
+    ? (entry.seriesUrl
+        ? `<span class="series-link" data-url="${esc(entry.seriesUrl)}">${esc(seriesLabel)}</span>`
+        : esc(seriesLabel))
+    : ''
+
   card.innerHTML = `
+    ${langBadge}
     ${coverSrc ? `<div class="cover-wrap"></div>` : ''}
     <div class="book-info">
       <div class="book-title" title="${esc(entry.title)}">${esc(entry.title)}</div>
       ${authorsHtml ? `<div class="book-authors">${authorsHtml}</div>` : ''}
+      ${seriesHtml ? `<div class="book-series">${seriesHtml}</div>` : ''}
       ${entry.summary ? `<div class="book-desc">${esc(entry.summary)}</div>` : ''}
       ${(formats || readBtn) ? `<div class="book-formats">${formats}${readBtn}</div>` : ''}
     </div>`
@@ -224,7 +247,7 @@ function mkBookCard(entry) {
     wrap.appendChild(img)
   }
 
-  card.querySelectorAll('.author-link').forEach(el => {
+  card.querySelectorAll('.author-link, .series-link').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
       const url = el.dataset.url
@@ -271,6 +294,10 @@ function renderBreadcrumb() {
     }
     dom.breadcrumb.appendChild(el)
   })
+}
+
+function matchesLangFilter(entry) {
+  return langFilter === 'all' || entry.language === langFilter
 }
 
 function renderSearch() {
@@ -398,6 +425,13 @@ function bindEvents() {
   // Search
   dom.btnSearch.addEventListener('click', doSearch)
   dom.searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch() })
+
+  // Language filter
+  dom.langFilter.addEventListener('change', () => {
+    langFilter = dom.langFilter.value
+    localStorage.setItem('langFilter', langFilter)
+    if (lastFeedData) renderFeed(lastFeedData)
+  })
 
   // Tooltip positioning
   document.addEventListener('mousemove', e => {

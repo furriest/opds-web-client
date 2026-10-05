@@ -49,17 +49,37 @@ type Feed struct {
 }
 
 type Entry struct {
-	Title   string   `xml:"title"`
-	ID      string   `xml:"id"`
-	Authors []Author `xml:"author"`
-	Summary string   `xml:"summary"`
-	Content *Content `xml:"content"`
-	Links   []Link   `xml:"link"`
+	Title      string     `xml:"title"`
+	ID         string     `xml:"id"`
+	Authors    []Author   `xml:"author"`
+	Summary    string     `xml:"summary"`
+	Content    *Content   `xml:"content"`
+	Links      []Link     `xml:"link"`
+	Categories []Category `xml:"category"`
+	// Extra captures elements not mapped above, including Dublin Core
+	// metadata (dc:language, dc:publisher, ...) regardless of the
+	// namespace prefix the server happens to use.
+	Extra []DCElement `xml:",any"`
+}
+
+// DCElement is a catch-all for unmapped child elements of an entry. It's
+// matched by local name only (XMLName.Local), ignoring namespace, since
+// servers vary between dc: and dcterms: prefixes for the same elements.
+type DCElement struct {
+	XMLName xml.Name
+	Value   string `xml:",chardata"`
 }
 
 type Author struct {
 	Name string `xml:"name"`
 	URI  string `xml:"uri"`
+}
+
+// Category covers both OPDS genre tags and this server's series tagging
+// convention: <category term="series" label="Series Name #3">.
+type Category struct {
+	Term  string `xml:"term,attr"`
+	Label string `xml:"label,attr"`
 }
 
 type Content struct {
@@ -92,6 +112,14 @@ type AnyEntry struct {
 	CoverURL string       `json:"coverUrl,omitempty"`
 	ThumbURL string       `json:"thumbUrl,omitempty"`
 	Files    []FileLink   `json:"files,omitempty"`
+	// Language is a normalized ISO 639-1 code (e.g. "ru", "en") derived
+	// from the entry's dc:language/dcterms:language element, when one of
+	// a handful of common languages is recognized. Empty if absent or
+	// unrecognized.
+	Language    string `json:"language,omitempty"`
+	Series      string `json:"series,omitempty"`
+	SeriesIndex string `json:"seriesIndex,omitempty"`
+	SeriesURL   string `json:"seriesUrl,omitempty"`
 }
 
 type AuthorLink struct {
@@ -431,12 +459,12 @@ func buildResponse(feed *Feed, baseURL string, cfg *Config) FeedResponse {
 	}
 
 	for _, e := range feed.Entries {
-		resp.Entries = append(resp.Entries, buildEntry(e, baseURL))
+		resp.Entries = append(resp.Entries, buildEntry(e, baseURL, cfg.URL))
 	}
 	return resp
 }
 
-func buildEntry(e Entry, baseURL string) AnyEntry {
+func buildEntry(e Entry, baseURL, rootURL string) AnyEntry {
 	ae := AnyEntry{Title: e.Title}
 
 	for _, a := range e.Authors {
@@ -454,6 +482,14 @@ func buildEntry(e Entry, baseURL string) AnyEntry {
 		ae.Summary = stripHTML(e.Content.Text)
 	} else if e.Summary != "" {
 		ae.Summary = stripHTML(e.Summary)
+	}
+
+	ae.Language = normalizeLanguage(dcLanguage(e))
+
+	if name, idx := seriesFromCategories(e.Categories); name != "" {
+		ae.Series = name
+		ae.SeriesIndex = idx
+		ae.SeriesURL = seriesURL(rootURL, name)
 	}
 
 	isBook := false
@@ -682,6 +718,98 @@ func mimeToFormat(mime string) string {
 		}
 		return "FILE"
 	}
+}
+
+// seriesFromCategories looks for this server's series tagging convention:
+// <category term="series" label="Series Name #3">. The label is split into
+// the series name and its trailing "#N" index, when present.
+func seriesFromCategories(cats []Category) (name, index string) {
+	for _, c := range cats {
+		if !strings.EqualFold(c.Term, "series") {
+			continue
+		}
+		label := strings.TrimSpace(c.Label)
+		if i := strings.LastIndex(label, " #"); i != -1 {
+			if idx := label[i+2:]; idx != "" && isDigits(idx) {
+				return strings.TrimSpace(label[:i]), idx
+			}
+		}
+		return label, ""
+	}
+	return "", ""
+}
+
+func isDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return s != ""
+}
+
+// seriesURL builds a link to this server's series listing, mirroring the
+// "self" link format OPDS returns when browsing a series directly:
+// {opds-root}/series/books?name=<series name>. This is specific to this
+// server's convention (there's no standard OPDS series link), inferred
+// from a sample feed.
+func seriesURL(rootURL, name string) string {
+	root, err := url.Parse(rootURL)
+	if err != nil {
+		return ""
+	}
+	u := *root
+	u.Path = strings.TrimRight(root.Path, "/") + "/series/books"
+	q := url.Values{}
+	q.Set("name", name)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// dcLanguage finds the first unmapped element named "language" (matched by
+// local name only, so it works whether the server uses dc: or dcterms:)
+// and returns its text content.
+func dcLanguage(e Entry) string {
+	for _, el := range e.Extra {
+		if strings.EqualFold(el.XMLName.Local, "language") {
+			return strings.TrimSpace(el.Value)
+		}
+	}
+	return ""
+}
+
+// languageNames is the small set of languages the UI offers as dedicated
+// filter options. Everything else is only reachable via "All languages".
+var languageNames = map[string]string{
+	"ru": "ru", "rus": "ru", "russian": "ru",
+	"en": "en", "eng": "en", "english": "en",
+	"fr": "fr", "fre": "fr", "fra": "fr", "french": "fr",
+	"es": "es", "spa": "es", "spanish": "es",
+	"de": "de", "ger": "de", "deu": "de", "german": "de",
+}
+
+// normalizeLanguage maps a raw dc:language value (which may be an ISO
+// 639-1/639-2 code, a BCP-47 tag like "ru-RU", or a bare English name) to a
+// 2-letter code. The 5 languages in languageNames get exact matches (so
+// 3-letter/verbose variants resolve too); anything else that already looks
+// like a bare ISO 639-1 code is passed through as-is (used for the card's
+// language badge, but not offered as a dedicated filter option). Returns
+// "" if the value is empty or doesn't look like a language code.
+func normalizeLanguage(raw string) string {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	if raw == "" {
+		return ""
+	}
+	if i := strings.IndexAny(raw, "-_,; "); i != -1 {
+		raw = raw[:i]
+	}
+	if code, ok := languageNames[raw]; ok {
+		return code
+	}
+	if len(raw) == 2 {
+		return raw
+	}
+	return ""
 }
 
 func stripHTML(s string) string {
