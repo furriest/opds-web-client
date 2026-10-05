@@ -21,14 +21,19 @@
     <nav id="breadcrumb" aria-label="Breadcrumb"></nav>
   </div>
   <div class="topbar-right">
-    <select id="lang-filter" class="lang-filter" title="Filter by language" aria-label="Filter by language">
-      <option value="all">Все языки</option>
-      <option value="ru">Русский</option>
-      <option value="en">Английский</option>
-      <option value="fr">Французский</option>
-      <option value="es">Испанский</option>
-      <option value="de">Немецкий</option>
-    </select>
+    <div class="lang-filter-wrap">
+      <select id="lang-filter" class="lang-filter" title="Filter by language" aria-label="Filter by language">
+        <option value="all">Все языки</option>
+        <option value="ru">Русский</option>
+        <option value="en">Английский</option>
+        <option value="fr">Французский</option>
+        <option value="es">Испанский</option>
+        <option value="de">Немецкий</option>
+      </select>
+      <svg class="lang-filter-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="m6 9 6 6 6-6"/>
+      </svg>
+    </div>
     <div id="search-wrap" class="search-wrap hidden">
       <input id="search-input" type="search" placeholder="Search…" autocomplete="off">
       <button id="btn-search" class="icon-btn" title="Search" aria-label="Search">

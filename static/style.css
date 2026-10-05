@@ -133,9 +133,19 @@ body {
 .icon-btn svg { width: 18px; height: 18px; }
 
 /* ── Language filter ──────────────────────────────────────────────────────── */
+.lang-filter-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 .lang-filter {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
   height: 34px;
-  padding: 0 8px;
+  padding: 0 28px 0 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg);
@@ -143,9 +153,18 @@ body {
   font-size: 14px;
   font-family: inherit;
   cursor: pointer;
-  flex-shrink: 0;
+  transition: box-shadow var(--transition), border-color var(--transition);
 }
 .lang-filter:focus { outline: none; box-shadow: 0 0 0 2px var(--accent); border-color: var(--accent); }
+
+.lang-filter-arrow {
+  position: absolute;
+  right: 8px;
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
 
 /* ── Search ───────────────────────────────────────────────────────────────── */
 .search-wrap {
